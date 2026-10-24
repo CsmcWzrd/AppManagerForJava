@@ -9,8 +9,10 @@ internal sealed class MainForm : Form
     private readonly ToolStripStatusLabel status = new() { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
     private readonly TextBox search = new() { Width = 220, PlaceholderText = "Search applications" };
     private readonly ImageList images = new() { ImageSize = new Size(72, 72), ColorDepth = ColorDepth.Depth32Bit };
-    private readonly List<(Guid App, Process Process)> running = new();
-    private readonly System.Windows.Forms.Timer timer = new() { Interval = 1000 };
+    private readonly List<LaunchSession> running = new();
+    private readonly Dictionary<Guid, LaunchSession> latest = new();
+    private readonly Dictionary<LaunchSession, OutputWindow> viewers = new();
+    private readonly NotifyIcon tray = new() { Icon = SystemIcons.Application, Text = "App Manager for Java" };
     private bool busy;
     private JarApp? Selected => apps.SelectedItems.Count == 0 ? null : apps.SelectedItems[0].Tag as JarApp;
     public MainForm(AppStore store)
@@ -21,11 +23,11 @@ internal sealed class MainForm : Form
         void ActionButton(string title, Action action) { var b = new ToolStripButton(title); b.Click += (_, _) => Guard(action); toolbar.Items.Add(b); }
         ActionButton("Add JAR…", Add); ActionButton("Update…", UpdateJar); ActionButton("Rename…", Rename); ActionButton("Delete", Delete);
         toolbar.Items.Add(new ToolStripSeparator()); ActionButton("Run", RunDefault); ActionButton("Run with parameters…", RunOnce);
-        toolbar.Items.Add(new ToolStripSeparator()); ActionButton("Storage…", MoveStorage); ActionButton("Java…", SetJava);
+        toolbar.Items.Add(new ToolStripSeparator()); ActionButton("Storage…", MoveStorage); ActionButton("JRE…", SetJava);
         var profileBar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(10), WrapContents = true };
         profileBar.Controls.Add(new Label { Text = "Launch profile", AutoSize = true, Margin = new Padding(0, 6, 8, 0) }); profileBar.Controls.Add(profiles);
         void ProfileButton(string title, Action action) { var b = new Button { Text = title, AutoSize = true }; b.Click += (_, _) => Guard(action); profileBar.Controls.Add(b); }
-        ProfileButton("New…", NewProfile); ProfileButton("Edit…", EditProfile); ProfileButton("Delete profile", DeleteProfile); ProfileButton("Open app folder", OpenFolder);
+        ProfileButton("New…", NewProfile); ProfileButton("Edit…", EditProfile); ProfileButton("Delete profile", DeleteProfile); ProfileButton("Open app folder", OpenFolder); ProfileButton("View output", ViewOutput);
         profileBar.Controls.Add(search);
         var hint = new Label { Text = "Drop JAR files here to add them • Double-click an app to run the selected profile", Dock = DockStyle.Top, Height = 38, Padding = new Padding(12, 8, 0, 0), ForeColor = Color.DimGray };
         var statusBar = new StatusStrip(); statusBar.Items.Add(status);
@@ -36,16 +38,26 @@ internal sealed class MainForm : Form
         DragEventHandler drop = async (_, e) => { if (!busy && e.Data?.GetData(DataFormats.FileDrop) is string[] files) await ImportFiles(files); };
         AllowDrop = true; DragEnter += enter; DragDrop += drop; apps.DragEnter += enter; apps.DragDrop += drop;
         var menu = new ContextMenuStrip();
-        foreach (var pair in new (string Title, Action Action)[] { ("Run", RunDefault), ("Run with parameters…", RunOnce), ("Update JAR…", UpdateJar), ("Rename…", Rename), ("Open folder", OpenFolder), ("Delete", Delete) })
+        foreach (var pair in new (string Title, Action Action)[] { ("Run", RunDefault), ("Run with parameters…", RunOnce), ("Update JAR…", UpdateJar), ("Rename…", Rename), ("Open folder", OpenFolder), ("View output", ViewOutput), ("Delete", Delete) })
             menu.Items.Add(pair.Title, null, (_, _) => Guard(pair.Action));
         apps.ContextMenuStrip = menu;
         apps.MouseDown += (_, e) => { if (e.Button == MouseButtons.Right) { var item = apps.GetItemAt(e.X, e.Y); if (item != null) { apps.SelectedItems.Clear(); item.Selected = true; } } };
-        timer.Tick += (_, _) =>
+        var trayMenu = new ContextMenuStrip();
+        trayMenu.Items.Add("Open manager", null, (_, _) => RestoreManager());
+        trayMenu.Items.Add("Exit", null, (_, _) => Close());
+        tray.ContextMenuStrip = trayMenu; tray.DoubleClick += (_, _) => RestoreManager();
+        FormClosing += (_, e) =>
         {
-            foreach (var entry in running.ToArray())
-                if (entry.Process.HasExited) { status.Text = $"Java process {entry.Process.Id} exited with code {entry.Process.ExitCode}."; entry.Process.Dispose(); running.Remove(entry); }
+            if (busy) { e.Cancel = true; return; }
+            if (running.Any(p => p.IsRunning))
+            {
+                e.Cancel = true; tray.Visible = true; Hide();
+                tray.ShowBalloonTip(3000, "Java applications are running", "Output capture continues. Double-click this icon to reopen the manager. Exit after Java applications finish.", ToolTipIcon.Info);
+                return;
+            }
+            foreach (var window in viewers.Values.ToArray()) window.Close();
+            tray.Dispose(); trayMenu.Dispose(); images.Dispose();
         };
-        timer.Start(); FormClosing += (_, e) => { if (busy) { e.Cancel = true; return; } timer.Stop(); foreach (var entry in running) entry.Process.Dispose(); images.Dispose(); timer.Dispose(); };
         RefreshApps();
     }
     private void Guard(Action action) { if (busy) return; try { action(); } catch (Exception ex) { RefreshApps(); MessageBox.Show(this, ex.Message, "App Manager for Java", MessageBoxButtons.OK, MessageBoxIcon.Error); } }
@@ -106,7 +118,7 @@ internal sealed class MainForm : Form
     private LaunchProfile CurrentProfile() => profiles.SelectedItem as LaunchProfile ?? new LaunchProfile();
     private void CheckIdle(JarApp app)
     {
-        if (running.Any(p => p.App == app.Id && !p.Process.HasExited)) throw new IOException("Close this application's Java processes before updating or deleting it.");
+        if (running.Any(p => p.AppId == app.Id && p.IsRunning)) throw new IOException("Close this application's Java processes before updating or deleting it.");
     }
     private async void UpdateJar()
     {
@@ -131,8 +143,35 @@ internal sealed class MainForm : Form
     private void RunOnce() { var app = RequireApp(); using var d = new ProfileDialog(CurrentProfile(), true); if (d.ShowDialog(this) == DialogResult.OK) Launch(app, d.Value); }
     private void Launch(JarApp app, LaunchProfile profile)
     {
-        var process = Process.Start(store.LaunchInfo(app, profile)) ?? throw new IOException("Java did not start.");
-        running.Add((app.Id, process)); status.Text = $"Started {app.Name} — process {process.Id}";
+        var session = LaunchSession.ForApp(store, app, profile);
+        running.Add(session); latest[app.Id] = session;
+        status.Text = $"Starting {app.Name}…";
+        if (profile.ShowOutputWindow) ShowOutput(session);
+        _ = ObserveLaunch(session);
+    }
+    private async Task ObserveLaunch(LaunchSession session)
+    {
+        var result = await session.Completion;
+        running.Remove(session);
+        if (IsDisposed || Disposing) return;
+        status.Text = result.Failed ? $"{session.AppName}: launch failed or exited unsuccessfully. See output."
+            : $"{session.AppName} exited with code {result.ExitCode}.";
+        if (result.Failed) ShowOutput(session);
+    }
+    private void RestoreManager() { Show(); WindowState = FormWindowState.Normal; Activate(); tray.Visible = false; }
+    private void ViewOutput()
+    {
+        var app = RequireApp();
+        if (!latest.TryGetValue(app.Id, out var session)) throw new InvalidOperationException("Run this application first to view its current-session output. Saved logs are in the configured log folder.");
+        ShowOutput(session);
+    }
+    private void ShowOutput(LaunchSession session)
+    {
+        if (viewers.TryGetValue(session, out var existing) && !existing.IsDisposed)
+        { existing.WindowState = FormWindowState.Normal; existing.Show(); existing.Activate(); return; }
+        var window = new OutputWindow(session); viewers[session] = window;
+        window.FormClosed += (_, _) => viewers.Remove(session);
+        window.Show(); // Deliberately modeless and unowned: never block the manager.
     }
     private void NewProfile()
     {
@@ -152,20 +191,25 @@ internal sealed class MainForm : Form
     private void OpenFolder() { var app = RequireApp(); Process.Start(new ProcessStartInfo("explorer.exe") { ArgumentList = { store.AppDirectory(app) }, UseShellExecute = false })?.Dispose(); }
     private void SetJava()
     {
-        var value = Dialogs.Text(this, "Java runtime", "Path to java.exe (or java.exe if Java is on PATH)", store.Settings.JavaExecutable);
-        if (value != null) store.SetJava(value);
+        using var dialog = new JavaSettingsDialog(store.Settings);
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        if (!string.IsNullOrWhiteSpace(dialog.JreFolder)) store.SetJreLocation(dialog.JreFolder);
+        else store.SetJava(dialog.JavaExecutable);
     }
     private async void MoveStorage()
     {
         if (busy) return;
         try
         {
-            if (running.Any(p => !p.Process.HasExited)) throw new IOException("Close all Java applications launched here before moving storage.");
+            if (running.Any(p => p.IsRunning)) throw new IOException("Close all Java applications launched here before moving storage.");
             using var dialog = new FolderBrowserDialog { Description = "Choose a new or empty storage folder. All managed files will be moved.", UseDescriptionForTitle = true, ShowNewFolderButton = true };
             if (dialog.ShowDialog(this) != DialogResult.OK) return;
             if (MessageBox.Show(this, $"Move all managed files to:\n{dialog.SelectedPath}?\nThe old copies are removed after verification.", "Move storage", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             busy = true; SetControls(false); UseWaitCursor = true; status.Text = "Copying and verifying storage…";
-            string result = await Task.Run(() => store.MoveStorage(dialog.SelectedPath)); RefreshApps(); MessageBox.Show(this, result, "Storage");
+            string oldRoot = store.Root;
+            string result = await Task.Run(() => store.MoveStorage(dialog.SelectedPath));
+            foreach (var session in latest.Values.Concat(viewers.Keys).Distinct()) session.RelocateLogPath(oldRoot, store.Root);
+            RefreshApps(); MessageBox.Show(this, result, "Storage");
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Storage move failed"); }
         finally { busy = false; SetControls(true); UseWaitCursor = false; }

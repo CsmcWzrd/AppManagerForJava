@@ -37,11 +37,30 @@ dotnet run --project tests\AppManagerForJava.Tests -c Release -p:RuntimeVersion=
 3. Double-click an app or click **Run** to launch the selected profile. **Run with parameters…** edits parameters for one launch without saving them.
 4. Click **New…** beside the profile selector to save parameters under a new name. **Edit…** overwrites the selected profile; **Delete profile** removes that profile. Each profile is a separate JSON file. The default profile is initially selected on app selection; choose another before running it.
 5. Enter one application argument per line. A value such as `C:\My Files\report.txt` stays one argument, without surrounding quotes. Quotes entered into the editor are literal characters. Empty lines between arguments represent empty arguments. A completely empty editor means no arguments. JVM options use their own editor and appear before `-jar`; application arguments appear afterward.
-6. **Java…** sets an explicit `java.exe` path or the executable name resolved through `PATH`. For normal console output, use `java.exe` and keep **Show Java console** enabled. Using `javaw.exe` intentionally suppresses the Java console regardless of that checkbox.
+6. **JRE…** lets you browse to a JRE or JDK installation folder containing `bin\java.exe`. This setting is saved and applies to all applications. Clear the folder to use the executable fallback, which can be a specific file selected with **Browse EXE…** or `java.exe` resolved through `PATH`. A selected JRE also sets `JAVA_HOME` for the launched process. Captured output is shown through the manager's output window. A `javaw.exe` fallback is mapped to the sibling `java.exe` so its standard output and error can be captured.
 7. **Open app folder** opens the application's working directory. If an application requires sibling libraries or resources, copy them here manually in the structure its manifest expects. Importing a JAR does not automatically discover or copy external dependencies.
 8. **Storage…** selects a new or empty folder. This relocates the entire managed storage tree, including JARs, profiles, catalog and application-created files. It works across drives using copy-and-verify instead of a same-drive rename. All Java applications launched here must exit first. The copy runs in the background while editing controls are disabled.
 
-Running applications continue if the manager closes. The manager tracks only processes started during its current session; close any Java processes started in earlier sessions or outside this manager before updating, deleting, or moving their files. It does not terminate applications automatically.
+When Java applications are running, closing the main window hides the manager in the Windows notification area so output capture continues. Double-click its notification icon or choose **Open manager** to restore it. After the applications finish, use **Exit** from that icon or close the restored manager to quit. The manager tracks only processes started during its current session; close any Java processes started in earlier sessions or outside this manager before updating, deleting, or moving their files. It does not terminate applications automatically.
+
+
+## Java output, log files, and failure windows
+
+Named launch profiles and the one-time parameter editor now provide:
+
+- **Redirect standard output and error to a log file** (enabled by default).
+- **Log folder**, with a folder picker. Blank means `logs` within the managed application folder; relative paths are resolved from the app folder. Absolute paths support a separate folder or drive. Each launch creates a unique timestamped UTF-8 `.log` file instead of overwriting previous logs.
+- **Open live output window when launching**, for viewing captured output immediately.
+
+Java standard output and standard error are captured concurrently. They are tagged `[stdout]` and `[stderr]` in the combined log; tags mark chunks, not necessarily whole lines. Ordering between separate streams reflects receipt order. Application identity, profile, runtime path, start time and exit code are included. Output without a terminating newline is retained. Files are flushed as output arrives. If Java uses a different text encoding, configure its output for UTF-8 (for compatible runtimes, use JVM options such as `-Dfile.encoding=UTF-8`). Output that the JAR writes directly to its own application-managed files is separate from stdout/stderr and is not intercepted.
+
+If Java cannot start, the managed JAR is missing, the requested log file cannot be created, or Java exits with a nonzero code, a separate **modeless output window** opens automatically. This is a normal resizable taskbar window created using `Show()`, not a modal dialog. You can keep using the manager, select/copy output, open the complete log in your associated editor, or close the output window. Closing that window does not terminate Java or interrupt its logging. If the application later exits unsuccessfully, the failure window reopens. **View output** reopens the most recent run for the selected app during the current manager session.
+
+Even when writing a file is disabled, output remains available in a bounded in-memory preview, including failure diagnostics. The preview retains approximately the latest 256 KiB of text; the full file retains all captured output when enabled. If the requested file cannot be created, Java is not launched silently without logging; the failure window explains the problem. If a later disk write fails, the process continues, the preview remains available, and the failure is reported. Capture uses a hidden `java.exe` process instead of a separate console window. Interactive console input is not provided by this version; use noninteractive JARs or GUI JARs.
+
+Default managed log folders move with application storage. Custom log folders outside storage remain at their configured location. Existing finished output windows follow moved log paths. Previously saved profiles are compatible and receive the new logging defaults; the old `ShowConsole` field is retained for file compatibility but is superseded by **Open live output window**.
+
+For Java, a nonzero exit is treated as failure at any stage, including immediately after startup. Exit code zero is treated as success; the manager cannot infer application-specific failures that deliberately return zero. Windows notification-area behavior and output windows require desktop validation on Windows.
 
 ## File layout and recovery
 
@@ -57,6 +76,8 @@ Library/
       application.jar
       profiles/
         <profile-guid>.json
+      logs/
+        <UTC-timestamp>_<run-guid>.log
       <application files and data>
 ```
 
@@ -75,10 +96,16 @@ Before deployment on your Windows machine:
 - Build the solution and run the console checks.
 - Import and drag/drop an executable GUI JAR and a console JAR.
 - Launch with a spaced path, a Unicode argument, and two differently named profiles; inspect the Java application's received arguments.
+- Choose a JRE folder, restart the manager, and confirm the resolved Java runtime in a log.
+- Enable file logging and a live output window. Close/reopen that window while the app is running and verify logging continues.
+- Launch a JAR that exits with a nonzero code. Verify its failure window is modeless, closable, and contains stdout/stderr.
+- With a JAR running, close the main window and restore it using the notification icon; confirm the process and file capture continue.
 - Test missing Java, a missing managed JAR, and a non-executable JAR.
 - Close Java, relocate to another drive, restart the manager, then launch again.
 - Confirm updating or deleting an app is blocked while its tracked Java process runs.
 - Check the icon grid, context menu, search, and layout at your preferred Windows display scaling.
+
+The core tests also exercise JRE folder persistence, invalid-folder rejection, legacy profiles, log settings, real child-process output flooding on both streams, Unicode text, unterminated output, nonzero exits, unique log paths, missing executables, prelaunch errors, memory-only capture and invalid log destinations. The output-flood checks use a small C# child mode in the test executable. To additionally check real Java startup failure, set `JAVA_MANAGER_TEST_JAVA` to the path of a Java executable before running the tests; this invokes an imported JAR with a deliberately missing Main class and checks its captured stderr.
 
 The core tests simulate relocation between directories. A real cross-drive Windows move, desktop rendering, Java console behavior, and Visual Studio interaction need Windows validation.
 

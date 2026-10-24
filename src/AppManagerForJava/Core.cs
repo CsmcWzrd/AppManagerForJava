@@ -17,13 +17,17 @@ public sealed class LaunchProfile
     public string Name { get; set; } = "Default";
     public string[] Arguments { get; set; } = Array.Empty<string>();
     public string[] JavaOptions { get; set; } = Array.Empty<string>();
-    public bool ShowConsole { get; set; } = true;
+    public bool ShowConsole { get; set; } = true; // Retained for existing profile files.
+    public bool RedirectOutputToFile { get; set; } = true;
+    public string LogDirectory { get; set; } = "";
+    public bool ShowOutputWindow { get; set; }
     public override string ToString() => Name;
 }
 public sealed class Preferences
 {
     public string StorageRoot { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AppManagerForJava", "Library");
     public string JavaExecutable { get; set; } = "java.exe";
+    public string JreDirectory { get; set; } = "";
 }
 public static class JsonFile
 {
@@ -135,16 +139,39 @@ public sealed class AppStore
     {
         if (string.IsNullOrWhiteSpace(executable)) throw new ArgumentException("Enter java.exe or an executable path.");
         var previous = Settings.JavaExecutable;
+        var previousJre = Settings.JreDirectory;
         Settings.JavaExecutable = executable.Trim().Trim('"');
-        try { JsonFile.Write(preferencesPath, Settings); } catch { Settings.JavaExecutable = previous; throw; }
+        Settings.JreDirectory = "";
+        try { JsonFile.Write(preferencesPath, Settings); }
+        catch { Settings.JavaExecutable = previous; Settings.JreDirectory = previousJre; throw; }
     }
+    public void SetJreLocation(string folder)
+    {
+        string root = Path.GetFullPath(folder.Trim().Trim('"'));
+        string executable = Path.Combine(root, "bin", "java.exe");
+        if (!File.Exists(executable)) throw new FileNotFoundException("Select a JRE or JDK folder containing bin\\java.exe.", executable);
+        string previous = Settings.JreDirectory;
+        Settings.JreDirectory = root;
+        try { JsonFile.Write(preferencesPath, Settings); } catch { Settings.JreDirectory = previous; throw; }
+    }
+    public string JavaPath => string.IsNullOrWhiteSpace(Settings.JreDirectory)
+        ? Settings.JavaExecutable : Path.Combine(Settings.JreDirectory, "bin", "java.exe");
     public ProcessStartInfo LaunchInfo(JarApp app, LaunchProfile profile)
     {
         if (!File.Exists(JarPath(app))) throw new FileNotFoundException("Managed JAR is missing.", JarPath(app));
-        var info = new ProcessStartInfo(Settings.JavaExecutable)
+        var info = new ProcessStartInfo(JavaPath)
         {
-            UseShellExecute = false, WorkingDirectory = AppDirectory(app), CreateNoWindow = !profile.ShowConsole
+            UseShellExecute = false, WorkingDirectory = AppDirectory(app), CreateNoWindow = true,
+            RedirectStandardOutput = true, RedirectStandardError = true
         };
+        // javaw.exe discards console output. Use its console counterpart for reliable capture.
+        if (string.Equals(Path.GetFileName(info.FileName), "javaw.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            string directory = Path.GetDirectoryName(info.FileName) ?? "";
+            info.FileName = directory.Length == 0 ? "java.exe" : Path.Combine(directory, "java.exe");
+        }
+        if (!string.IsNullOrWhiteSpace(Settings.JreDirectory))
+            info.Environment["JAVA_HOME"] = Settings.JreDirectory;
         foreach (var arg in profile.JavaOptions) info.ArgumentList.Add(arg);
         info.ArgumentList.Add("-jar"); info.ArgumentList.Add(JarPath(app));
         foreach (var arg in profile.Arguments) info.ArgumentList.Add(arg);

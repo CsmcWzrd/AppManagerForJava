@@ -1,4 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
 <PropertyGroup><OutputType>Exe</OutputType><RuntimeVersion Condition="'$(RuntimeVersion)' == ''">8.0</RuntimeVersion><TargetFramework>net$(RuntimeVersion)</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><LangVersion>10.0</LangVersion></PropertyGroup>
-<ItemGroup><Compile Include="../../src/AppManagerForJava/Core.cs" Link="Core.cs" /></ItemGroup>
+<ItemGroup><Compile Include="../../src/AppManagerForJava/Core.cs" Link="Core.cs" /><Compile Include="../../src/AppManagerForJava/LaunchSession.cs" Link="LaunchSession.cs" /></ItemGroup>
 </Project>
