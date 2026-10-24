@@ -14,3 +14,11 @@ The compiler checks supplied the SDK-generated global usings and an equivalent A
 The environment could not run the normal .NET CLI/MSBuild build because process metadata access fails inside this execution container. Direct Roslyn compilation and test execution were used instead; this is not a claim of a completed Visual Studio or MSBuild solution build.
 
 Windows desktop rendering, drag/drop events, notification-area behavior, modeless window interaction, actual Java process windows, .NET 6 runtime execution, published executables, and a physical cross-drive move were not exercised here. Follow the Windows validation checklist in README.md. No precompiled Windows executable is included.
+
+## Startup icon fix
+
+The attached Windows exception report identifies deferred ImageList bitmap creation as the crash site. Source review found `using var bitmap` inside `RefreshApps`, which disposed the bitmap immediately after `Images.Add`. The fix transfers ownership to `OwnedImageList` and retains the original bitmaps until refresh or shutdown.
+
+A Windows regression console project is included in the solution and `build.cmd`. It tests delayed handle creation, bitmap cleanup, repeated image rebuilds, and opening/searching the actual main window with imported apps. Its native Windows checks cannot run in this Linux environment; compilation is checked separately. The preceding 44 core checks cover the earlier storage/launch changes and do not validate native Windows image rendering.
+
+For this icon fix, the updated application compiled against both .NET 6 and .NET 8 Windows reference assemblies without compiler diagnostics. The new Windows regression program also compiled against .NET 8 Windows references without diagnostics. These are compile checks; the native regression program was not executed here.

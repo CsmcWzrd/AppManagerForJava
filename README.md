@@ -2,6 +2,14 @@
 
 A Microsoft Visual C# Windows Forms application for managing and launching Java JAR applications. Open `AppManagerForJava.sln` in Visual Studio with the **.NET desktop development** workload. Set **AppManagerForJava** as the startup project and build/run it.
 
+## Startup icon crash fix
+
+This revision fixes the startup exception `System.ArgumentException: Parameter is not valid` in `System.Drawing.Image.get_Width` / `ImageList.CreateBitmap`.
+
+Previously, `RefreshApps` disposed each generated icon immediately after adding it to the image list. WinForms can defer reading that image until its native handle is created, including when the main window first appears. The image list now owns and retains the original bitmaps, clears image references before disposing old icons on refresh, and releases all originals at shutdown.
+
+Extract this updated package, open the solution, then **Clean Solution** and **Rebuild Solution** before running. Existing application storage, JRE settings and saved profiles use the same formats.
+
 ## Requirements and build
 
 - Windows desktop; this WinForms application is Windows-only.
@@ -19,7 +27,11 @@ dotnet run --project tests\AppManagerForJava.Tests -c Release
 dotnet run --project src\AppManagerForJava -c Release
 ```
 
-Or run `build.cmd` to build and run the core checks. The tests are an ordinary console program with a nonzero exit code on failure, not a `dotnet test` test-adapter project.
+Or run `build.cmd` on Windows to build and run both the core checks and Windows UI regression checks. Both test projects are ordinary console programs with nonzero exit codes on failure, not `dotnet test` test-adapter projects. The Windows regression program briefly opens the real main window with a populated test catalog, checks deferred image-handle creation, refreshes the search/grid, and verifies bitmap cleanup. Run it on Windows with:
+
+```bat
+dotnet run --project tests\AppManagerForJava.Windows.Tests -c Release
+```
 
 To target .NET 6 explicitly:
 

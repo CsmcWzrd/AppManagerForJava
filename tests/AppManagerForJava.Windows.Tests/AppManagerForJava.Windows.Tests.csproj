@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RuntimeVersion Condition="'$(RuntimeVersion)' == ''">8.0</RuntimeVersion>
+    <TargetFramework>net$(RuntimeVersion)-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>10.0</LangVersion>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/AppManagerForJava/AppManagerForJava.csproj" /></ItemGroup>
+</Project>

@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AppManagerForJava", "src\Ap
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AppManagerForJava.Tests", "tests\AppManagerForJava.Tests\AppManagerForJava.Tests.csproj", "{3DF3E244-EE03-4669-8A88-EDC46D856C70}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AppManagerForJava.Windows.Tests", "tests\AppManagerForJava.Windows.Tests\AppManagerForJava.Windows.Tests.csproj", "{5EC3B58C-4A36-468B-94E0-CF48A977BB19}"
+EndProject
 Global
  GlobalSection(SolutionConfigurationPlatforms) = preSolution
   Debug|Any CPU = Debug|Any CPU
@@ -20,5 +22,9 @@ Global
   {3DF3E244-EE03-4669-8A88-EDC46D856C70}.Debug|Any CPU.Build.0 = Debug|Any CPU
   {3DF3E244-EE03-4669-8A88-EDC46D856C70}.Release|Any CPU.ActiveCfg = Release|Any CPU
   {3DF3E244-EE03-4669-8A88-EDC46D856C70}.Release|Any CPU.Build.0 = Release|Any CPU
+  {5EC3B58C-4A36-468B-94E0-CF48A977BB19}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+  {5EC3B58C-4A36-468B-94E0-CF48A977BB19}.Debug|Any CPU.Build.0 = Debug|Any CPU
+  {5EC3B58C-4A36-468B-94E0-CF48A977BB19}.Release|Any CPU.ActiveCfg = Release|Any CPU
+  {5EC3B58C-4A36-468B-94E0-CF48A977BB19}.Release|Any CPU.Build.0 = Release|Any CPU
  EndGlobalSection
 EndGlobal

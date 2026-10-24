@@ -8,7 +8,7 @@ internal sealed class MainForm : Form
     private readonly ComboBox profiles = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
     private readonly ToolStripStatusLabel status = new() { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
     private readonly TextBox search = new() { Width = 220, PlaceholderText = "Search applications" };
-    private readonly ImageList images = new() { ImageSize = new Size(72, 72), ColorDepth = ColorDepth.Depth32Bit };
+    private readonly OwnedImageList images = new();
     private readonly List<LaunchSession> running = new();
     private readonly Dictionary<Guid, LaunchSession> latest = new();
     private readonly Dictionary<LaunchSession, OutputWindow> viewers = new();
@@ -32,7 +32,7 @@ internal sealed class MainForm : Form
         var hint = new Label { Text = "Drop JAR files here to add them • Double-click an app to run the selected profile", Dock = DockStyle.Top, Height = 38, Padding = new Padding(12, 8, 0, 0), ForeColor = Color.DimGray };
         var statusBar = new StatusStrip(); statusBar.Items.Add(status);
         Controls.Add(apps); Controls.Add(hint); Controls.Add(profileBar); Controls.Add(toolbar); Controls.Add(statusBar); toolbar.Dock = DockStyle.Top;
-        apps.LargeImageList = images; apps.SelectedIndexChanged += (_, _) => Guard(RefreshProfiles);
+        apps.LargeImageList = images.Value; apps.SelectedIndexChanged += (_, _) => Guard(RefreshProfiles);
         apps.DoubleClick += (_, _) => Guard(RunDefault); search.TextChanged += (_, _) => RefreshApps();
         DragEventHandler enter = (_, e) => { if (!busy && e.Data?.GetData(DataFormats.FileDrop) is string[] files && files.Any(IsJar)) e.Effect = DragDropEffects.Copy; };
         DragEventHandler drop = async (_, e) => { if (!busy && e.Data?.GetData(DataFormats.FileDrop) is string[] files) await ImportFiles(files); };
@@ -92,10 +92,10 @@ internal sealed class MainForm : Form
     private void SetControls(bool enabled) { foreach (Control c in Controls) if (c is not StatusStrip) c.Enabled = enabled; }
     private void RefreshApps()
     {
-        var id = Selected?.Id; apps.BeginUpdate(); apps.Items.Clear(); images.Images.Clear();
+        var id = Selected?.Id; apps.BeginUpdate(); apps.Items.Clear(); images.Clear();
         foreach (var app in store.Apps.Where(a => a.Name.Contains(search.Text, StringComparison.OrdinalIgnoreCase)).OrderBy(a => a.Name))
         {
-            using var bitmap = MakeIcon(app.Name); images.Images.Add(app.Id.ToString(), bitmap);
+            images.Add(app.Id.ToString(), MakeIcon(app.Name));
             var item = new ListViewItem(app.Name, app.Id.ToString()) { Tag = app, ToolTipText = $"{store.JarPath(app)}\nUpdated {app.UpdatedUtc.ToLocalTime():g}" }; apps.Items.Add(item);
             if (app.Id == id) item.Selected = true;
         }
