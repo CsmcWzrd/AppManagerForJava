@@ -9,6 +9,7 @@ internal static class Dialogs
         var ok = new Button { Text = "OK", Left = 350, Top = 86, DialogResult = DialogResult.OK };
         var cancel = new Button { Text = "Cancel", Left = 440, Top = 86, DialogResult = DialogResult.Cancel };
         form.Controls.AddRange(new Control[] { caption, input, ok, cancel }); form.AcceptButton = ok; form.CancelButton = cancel;
+        VisualTheme.Apply(form);
         return form.ShowDialog(owner) == DialogResult.OK ? input.Text : null;
     }
 }
@@ -51,7 +52,7 @@ internal sealed class ProfileDialog : Form
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
         var ok = new Button { Text = temporary ? "Run" : "Save", DialogResult = DialogResult.OK, AutoSize = true };
         var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
-        buttons.Controls.AddRange(new Control[] { cancel, ok }); grid.Controls.Add(buttons); Controls.Add(grid); CancelButton = cancel;
+        buttons.Controls.AddRange(new Control[] { cancel, ok }); grid.Controls.Add(buttons); Controls.Add(grid); CancelButton = cancel; VisualTheme.Apply(this);
     }
 }
 
@@ -81,6 +82,6 @@ internal sealed class JavaSettingsDialog : Form
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
         var save = new Button { Text = "Save", DialogResult = DialogResult.OK, AutoSize = true }; var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
         buttons.Controls.AddRange(new Control[] { cancel, save }); grid.Controls.Add(buttons, 0, 5); grid.SetColumnSpan(buttons, 2);
-        Controls.Add(grid); AcceptButton = save; CancelButton = cancel;
+        Controls.Add(grid); AcceptButton = save; CancelButton = cancel; VisualTheme.Apply(this);
     }
 }

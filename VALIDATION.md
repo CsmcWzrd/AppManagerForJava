@@ -22,3 +22,11 @@ The attached Windows exception report identifies deferred ImageList bitmap creat
 A Windows regression console project is included in the solution and `build.cmd`. It tests delayed handle creation, bitmap cleanup, repeated image rebuilds, and opening/searching the actual main window with imported apps. Its native Windows checks cannot run in this Linux environment; compilation is checked separately. The preceding 44 core checks cover the earlier storage/launch changes and do not validate native Windows image rendering.
 
 For this icon fix, the updated application compiled against both .NET 6 and .NET 8 Windows reference assemblies without compiler diagnostics. The new Windows regression program also compiled against .NET 8 Windows references without diagnostics. These are compile checks; the native regression program was not executed here.
+
+## Launchpad visual redesign — 2026-10-25
+
+The main window now uses custom painted application cards, a circular launcher button, a rounded command panel, and a live application-information strip. All former toolbar/profile commands have been retained in the launcher, alongside keyboard and context-menu access. The original bitmap lifetime fix remains in place.
+
+Windows regression checks have been extended to cover card rendering configuration, absence of standard menu/toolbar controls, opening/closing the circular menu, retained command availability, and hover information updates without selection changes. Native Windows interaction and visual layout still need execution on Windows, including 100%, 150%, and 200% scaling. No Windows screenshot or native visual test is claimed from this Linux environment.
+
+For the 2026-10-25 redesign, the application source compiled with no diagnostics against .NET 6 and .NET 8 Windows reference assemblies. The updated Windows regression project compiled against .NET 8 references. Native GUI execution was not available; the new Windows interaction checks are included for execution on Windows. Storage and launch implementation files were not changed in this redesign.

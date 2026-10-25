@@ -22,6 +22,7 @@ internal sealed class OutputWindow : Form
         open.Click += (_, _) => { try { if (session.LogPath is { } path) Process.Start(new ProcessStartInfo(path) { UseShellExecute = true })?.Dispose(); } catch (Exception ex) { details.Text = "Cannot open log: " + ex.Message; } };
         close.Click += (_, _) => Close();
         bar.Controls.AddRange(new Control[] { follow, copy, open, close }); Controls.Add(output); Controls.Add(details); Controls.Add(bar);
+        VisualTheme.Apply(this);
         timer.Tick += (_, _) => RefreshOutput(); timer.Start(); RefreshOutput();
         Activated += (_, _) => RefreshOutput();
         FormClosed += (_, _) => { timer.Stop(); timer.Dispose(); };

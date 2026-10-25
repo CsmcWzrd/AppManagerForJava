@@ -2,6 +2,16 @@
 
 A Microsoft Visual C# Windows Forms application for managing and launching Java JAR applications. Open `AppManagerForJava.sln` in Visual Studio with the **.NET desktop development** workload. Set **AppManagerForJava** as the startup project and build/run it.
 
+## The new launchpad interface
+
+The main window uses a pearl background, violet accents, rounded application cards, gradient monogram icons and hover/selection highlights. The card grid adjusts its columns when the window is resized. Profile/runtime dialogs and output windows share the light theme.
+
+The conventional toolbar is replaced by an information strip. Hovering over a card shows that app's name, running status, JAR size, update time and managed file location. Moving away restores the selected app's details, or the library summary when nothing is selected. Hover does not change selection.
+
+Click the **circular four-tile button at the upper left** to open the launch menu. All previous commands are here: add, update, rename, delete, run, run with temporary parameters, open the app folder, view output, select/create/edit/delete launch profiles, configure the JRE, and move storage. Select an app first to enable its commands. The menu scrolls on smaller windows. Click the circular button again, press Escape, or click the library to close it. The right-click app menu remains available.
+
+Keyboard shortcuts: **F10** opens/closes the launch menu, **Ctrl+O** adds JARs, **Ctrl+F** focuses search, and **Enter** launches the selected app when the grid has focus. Native title-bar and window-management controls are retained.
+
 ## Startup icon crash fix
 
 This revision fixes the startup exception `System.ArgumentException: Parameter is not valid` in `System.Drawing.Image.get_Width` / `ImageList.CreateBitmap`.
@@ -44,14 +54,14 @@ dotnet run --project tests\AppManagerForJava.Tests -c Release -p:RuntimeVersion=
 
 ## Using the application
 
-1. Click **Add JAR…** to open one or several JARs, or drop JAR files onto the window. Files are copied; imported originals remain in place. A manifest is required, and the JAR must be executable by `java -jar` to launch successfully.
-2. Select an app in the icon grid. **Update…** replaces its managed JAR while preserving its launch profiles and files. **Rename…** changes its display name. **Delete** removes its managed directory, including profiles and any app-created files, after confirmation.
-3. Double-click an app or click **Run** to launch the selected profile. **Run with parameters…** edits parameters for one launch without saving them.
-4. Click **New…** beside the profile selector to save parameters under a new name. **Edit…** overwrites the selected profile; **Delete profile** removes that profile. Each profile is a separate JSON file. The default profile is initially selected on app selection; choose another before running it.
+1. Open the circular menu and click **Add JAR files…** to open one or several JARs, or drop JAR files onto the window. Files are copied; imported originals remain in place. A manifest is required, and the JAR must be executable by `java -jar` to launch successfully.
+2. Select an app in the icon grid. **Update JAR…** replaces its managed JAR while preserving its launch profiles and files. **Rename app…** changes its display name. **Delete app** removes its managed directory, including profiles and any app-created files, after confirmation.
+3. Double-click an app or choose **Run application** from the launch menu to launch the selected profile. **Run with parameters…** edits parameters for one launch without saving them.
+4. Click **New profile…** in the launch menu to save parameters under a new name. **Edit profile…** overwrites the selected profile; **Delete selected profile** removes that profile. Each profile is a separate JSON file. The default profile is initially selected on app selection; choose another before running it.
 5. Enter one application argument per line. A value such as `C:\My Files\report.txt` stays one argument, without surrounding quotes. Quotes entered into the editor are literal characters. Empty lines between arguments represent empty arguments. A completely empty editor means no arguments. JVM options use their own editor and appear before `-jar`; application arguments appear afterward.
-6. **JRE…** lets you browse to a JRE or JDK installation folder containing `bin\java.exe`. This setting is saved and applies to all applications. Clear the folder to use the executable fallback, which can be a specific file selected with **Browse EXE…** or `java.exe` resolved through `PATH`. A selected JRE also sets `JAVA_HOME` for the launched process. Captured output is shown through the manager's output window. A `javaw.exe` fallback is mapped to the sibling `java.exe` so its standard output and error can be captured.
+6. **JRE location…** lets you browse to a JRE or JDK installation folder containing `bin\java.exe`. This setting is saved and applies to all applications. Clear the folder to use the executable fallback, which can be a specific file selected with **Browse EXE…** or `java.exe` resolved through `PATH`. A selected JRE also sets `JAVA_HOME` for the launched process. Captured output is shown through the manager's output window. A `javaw.exe` fallback is mapped to the sibling `java.exe` so its standard output and error can be captured.
 7. **Open app folder** opens the application's working directory. If an application requires sibling libraries or resources, copy them here manually in the structure its manifest expects. Importing a JAR does not automatically discover or copy external dependencies.
-8. **Storage…** selects a new or empty folder. This relocates the entire managed storage tree, including JARs, profiles, catalog and application-created files. It works across drives using copy-and-verify instead of a same-drive rename. All Java applications launched here must exit first. The copy runs in the background while editing controls are disabled.
+8. **Move storage…** selects a new or empty folder. This relocates the entire managed storage tree, including JARs, profiles, catalog and application-created files. It works across drives using copy-and-verify instead of a same-drive rename. All Java applications launched here must exit first. The copy runs in the background while editing controls are disabled.
 
 When Java applications are running, closing the main window hides the manager in the Windows notification area so output capture continues. Double-click its notification icon or choose **Open manager** to restore it. After the applications finish, use **Exit** from that icon or close the restored manager to quit. The manager tracks only processes started during its current session; close any Java processes started in earlier sessions or outside this manager before updating, deleting, or moving their files. It does not terminate applications automatically.
 
@@ -115,7 +125,10 @@ Before deployment on your Windows machine:
 - Test missing Java, a missing managed JAR, and a non-executable JAR.
 - Close Java, relocate to another drive, restart the manager, then launch again.
 - Confirm updating or deleting an app is blocked while its tracked Java process runs.
-- Check the icon grid, context menu, search, and layout at your preferred Windows display scaling.
+- Check the card grid, context menu, search, and layout at 100%, 150% and 200% Windows display scaling.
+- Hover an unselected app and confirm the top strip changes while the selected app and launch profile stay unchanged.
+- Open the circular menu, verify each management/launch/profile/settings command, and confirm Escape closes it.
+- Resize the window and confirm the grid reflows and the command menu remains scrollable.
 
 The core tests also exercise JRE folder persistence, invalid-folder rejection, legacy profiles, log settings, real child-process output flooding on both streams, Unicode text, unterminated output, nonzero exits, unique log paths, missing executables, prelaunch errors, memory-only capture and invalid log destinations. The output-flood checks use a small C# child mode in the test executable. To additionally check real Java startup failure, set `JAVA_MANAGER_TEST_JAVA` to the path of a Java executable before running the tests; this invokes an imported JAR with a deliberately missing Main class and checks its captured stderr.
 

@@ -4,10 +4,18 @@ namespace AppManagerForJava;
 internal sealed class MainForm : Form
 {
     private readonly AppStore store;
-    private readonly ListView apps = new() { Dock = DockStyle.Fill, View = View.LargeIcon, MultiSelect = false, HideSelection = false, AllowDrop = true, BackColor = Color.FromArgb(247, 249, 252) };
+    private readonly AppGridView apps = new() { Dock = DockStyle.Fill, AllowDrop = true, Name = "ApplicationGrid" };
     private readonly ComboBox profiles = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
-    private readonly ToolStripStatusLabel status = new() { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly TextBox search = new() { Width = 220, PlaceholderText = "Search applications" };
+    private readonly Label status = new() { Dock = DockStyle.Bottom, Height = 36, Padding = new Padding(30, 9, 18, 0), ForeColor = VisualTheme.Muted, BackColor = VisualTheme.Canvas, AutoEllipsis = true };
+    private readonly HoverInfoStrip information = new() { Dock = DockStyle.Fill, Name = "HoverInformation" };
+    private readonly StartOrb start = new() { Name = "StartMenuButton", Size = new Size(62, 62) };
+    private readonly RoundPanel commands = new() { Name = "CommandDrawer", Visible = false, Size = new Size(440, 530), Padding = new Padding(5) };
+    private readonly Label menuTitle = new() { Font = new Font("Segoe UI Semibold", 13), ForeColor = VisualTheme.Ink, AutoEllipsis = true, Dock = DockStyle.Fill };
+    private readonly Label libraryCount = new() { ForeColor = VisualTheme.Muted, AutoSize = true };
+    private readonly Label empty = new() { Text = "Your next favorite app belongs here.\n\nOpen the circular menu to add JAR files, or drop them here.", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, ForeColor = VisualTheme.Muted, Font = new Font("Segoe UI", 12), AllowDrop = true };
+    private readonly List<Button> appCommands = new();
+    private JarApp? hoveredApp;
+    private readonly TextBox search = new() { Name = "LibrarySearch", BorderStyle = BorderStyle.None, Width = 230, PlaceholderText = "Search your library…", BackColor = Color.White, ForeColor = VisualTheme.Ink };
     private readonly OwnedImageList images = new();
     private readonly List<LaunchSession> running = new();
     private readonly Dictionary<Guid, LaunchSession> latest = new();
@@ -17,26 +25,43 @@ internal sealed class MainForm : Form
     private JarApp? Selected => apps.SelectedItems.Count == 0 ? null : apps.SelectedItems[0].Tag as JarApp;
     public MainForm(AppStore store)
     {
-        this.store = store; Text = "App Manager for Java"; Width = 1120; Height = 740; MinimumSize = new Size(900, 560);
-        Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterScreen;
-        var toolbar = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Padding = new Padding(8) };
-        void ActionButton(string title, Action action) { var b = new ToolStripButton(title); b.Click += (_, _) => Guard(action); toolbar.Items.Add(b); }
-        ActionButton("Add JAR…", Add); ActionButton("Update…", UpdateJar); ActionButton("Rename…", Rename); ActionButton("Delete", Delete);
-        toolbar.Items.Add(new ToolStripSeparator()); ActionButton("Run", RunDefault); ActionButton("Run with parameters…", RunOnce);
-        toolbar.Items.Add(new ToolStripSeparator()); ActionButton("Storage…", MoveStorage); ActionButton("JRE…", SetJava);
-        var profileBar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(10), WrapContents = true };
-        profileBar.Controls.Add(new Label { Text = "Launch profile", AutoSize = true, Margin = new Padding(0, 6, 8, 0) }); profileBar.Controls.Add(profiles);
-        void ProfileButton(string title, Action action) { var b = new Button { Text = title, AutoSize = true }; b.Click += (_, _) => Guard(action); profileBar.Controls.Add(b); }
-        ProfileButton("New…", NewProfile); ProfileButton("Edit…", EditProfile); ProfileButton("Delete profile", DeleteProfile); ProfileButton("Open app folder", OpenFolder); ProfileButton("View output", ViewOutput);
-        profileBar.Controls.Add(search);
-        var hint = new Label { Text = "Drop JAR files here to add them • Double-click an app to run the selected profile", Dock = DockStyle.Top, Height = 38, Padding = new Padding(12, 8, 0, 0), ForeColor = Color.DimGray };
-        var statusBar = new StatusStrip(); statusBar.Items.Add(status);
-        Controls.Add(apps); Controls.Add(hint); Controls.Add(profileBar); Controls.Add(toolbar); Controls.Add(statusBar); toolbar.Dock = DockStyle.Top;
-        apps.LargeImageList = images.Value; apps.SelectedIndexChanged += (_, _) => Guard(RefreshProfiles);
+        this.store = store; Text = "App Manager for Java"; Width = 1220; Height = 820; MinimumSize = new Size(920, 660);
+        AutoScaleMode = AutoScaleMode.Dpi; AutoScaleDimensions = new SizeF(96, 96);
+        Font = new Font("Segoe UI", 10); BackColor = VisualTheme.Canvas; ForeColor = VisualTheme.Ink; StartPosition = FormStartPosition.CenterScreen; KeyPreview = true;
+        var top = new Panel { Dock = DockStyle.Top, Height = 106, BackColor = Color.White, Padding = new Padding(108, 0, 24, 0) };
+        top.Controls.Add(information); start.Location = new Point(25, 22); top.Controls.Add(start); start.BringToFront();
+        start.Click += (_, _) => ToggleCommands();
+        var heading = new Panel { Dock = DockStyle.Top, Height = 140, Padding = new Padding(30, 0, 30, 0) };
+        var eyebrow = new Label { Text = "YOUR PERSONAL LAUNCHPAD", Location = new Point(32, 23), AutoSize = true, Font = new Font("Segoe UI Semibold", 8), ForeColor = VisualTheme.Accent };
+        var title = new Label { Text = "A little Java. A lot of possibility.", Location = new Point(28, 47), AutoSize = true, Font = new Font("Segoe UI Semibold", 23), ForeColor = VisualTheme.Ink };
+        libraryCount.Location = new Point(32, 101);
+        var searchBox = new RoundPanel { Size = new Size(282, 43), Location = new Point(Width - 346, 81), Anchor = AnchorStyles.Top | AnchorStyles.Right, Padding = new Padding(18, 11, 12, 8) };
+        search.Dock = DockStyle.Fill; searchBox.Controls.Add(search); heading.Controls.AddRange(new Control[] { eyebrow, title, libraryCount, searchBox });
+        // Reflow the heading/search at smaller window widths without overlaps.
+        heading.Resize += (_, _) => { title.MaximumSize = new Size(Math.Max(200, heading.Width - 365*DeviceDpi/96), 42*DeviceDpi/96); searchBox.Left = heading.ClientSize.Width - searchBox.Width - 30*DeviceDpi/96; };
+        var library = new Panel { Dock = DockStyle.Fill, Padding = new Padding(22, 0, 22, 0) };
+        library.Controls.Add(apps); library.Controls.Add(empty);
+        Controls.Add(library); Controls.Add(heading); Controls.Add(top); Controls.Add(status); Controls.Add(commands); commands.BringToFront();
+        BuildCommandDrawer(); Resize += (_, _) => PositionCommands();
+        apps.IsAppRunning = id => running.Any(p => p.AppId == id && p.IsRunning);
+        apps.AppHovered += app => { hoveredApp = app; UpdateInformation(); };
+        apps.SelectedIndexChanged += (_, _) => { if (!busy) { Guard(RefreshProfiles); UpdateInformation(); UpdateCommandState(); } };
+        apps.MouseDown += (_, _) => commands.Hide();
+        library.MouseDown += (_, _) => commands.Hide(); heading.MouseDown += (_, _) => commands.Hide();
+        search.Enter += (_, _) => commands.Hide();
+        KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Escape) { commands.Hide(); apps.Focus(); e.Handled = true; }
+            else if (e.Control && e.KeyCode == Keys.F) { search.Focus(); search.SelectAll(); e.SuppressKeyPress = true; }
+            else if (e.Control && e.KeyCode == Keys.O) { Guard(Add); e.SuppressKeyPress = true; }
+            else if (e.KeyCode == Keys.F10) { ToggleCommands(); e.SuppressKeyPress = true; }
+        };
+        apps.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { Guard(RunDefault); e.SuppressKeyPress = true; } };
+        apps.LargeImageList = images.Value;
         apps.DoubleClick += (_, _) => Guard(RunDefault); search.TextChanged += (_, _) => RefreshApps();
         DragEventHandler enter = (_, e) => { if (!busy && e.Data?.GetData(DataFormats.FileDrop) is string[] files && files.Any(IsJar)) e.Effect = DragDropEffects.Copy; };
         DragEventHandler drop = async (_, e) => { if (!busy && e.Data?.GetData(DataFormats.FileDrop) is string[] files) await ImportFiles(files); };
-        AllowDrop = true; DragEnter += enter; DragDrop += drop; apps.DragEnter += enter; apps.DragDrop += drop;
+        AllowDrop = true; DragEnter += enter; DragDrop += drop; apps.DragEnter += enter; apps.DragDrop += drop; empty.DragEnter += enter; empty.DragDrop += drop;
         var menu = new ContextMenuStrip();
         foreach (var pair in new (string Title, Action Action)[] { ("Run", RunDefault), ("Run with parameters…", RunOnce), ("Update JAR…", UpdateJar), ("Rename…", Rename), ("Open folder", OpenFolder), ("View output", ViewOutput), ("Delete", Delete) })
             menu.Items.Add(pair.Title, null, (_, _) => Guard(pair.Action));
@@ -89,17 +114,92 @@ internal sealed class MainForm : Form
         finally { busy = false; UseWaitCursor = false; SetControls(true); }
         if (errors.Count > 0) MessageBox.Show(this, string.Join(Environment.NewLine, errors), "Some files were not imported");
     }
-    private void SetControls(bool enabled) { foreach (Control c in Controls) if (c is not StatusStrip) c.Enabled = enabled; }
+    private void SetControls(bool enabled) { commands.Hide(); foreach (Control c in Controls) if (c != status) c.Enabled = enabled; }
     private void RefreshApps()
     {
-        var id = Selected?.Id; apps.BeginUpdate(); apps.Items.Clear(); images.Clear();
-        foreach (var app in store.Apps.Where(a => a.Name.Contains(search.Text, StringComparison.OrdinalIgnoreCase)).OrderBy(a => a.Name))
+        var id = Selected?.Id; hoveredApp = null; apps.ResetHover(); apps.BeginUpdate();
+        try
         {
-            images.Add(app.Id.ToString(), MakeIcon(app.Name));
-            var item = new ListViewItem(app.Name, app.Id.ToString()) { Tag = app, ToolTipText = $"{store.JarPath(app)}\nUpdated {app.UpdatedUtc.ToLocalTime():g}" }; apps.Items.Add(item);
-            if (app.Id == id) item.Selected = true;
+            apps.Items.Clear(); images.Clear();
+            foreach (var app in store.Apps.Where(a => a.Name.Contains(search.Text, StringComparison.OrdinalIgnoreCase)).OrderBy(a => a.Name))
+            {
+                images.Add(app.Id.ToString(), MakeIcon(app.Name));
+                var item = new ListViewItem(app.Name, app.Id.ToString()) { Tag = app, ToolTipText = $"{store.JarPath(app)}\nUpdated {app.UpdatedUtc.ToLocalTime():g}" }; apps.Items.Add(item);
+                if (app.Id == id) item.Selected = true;
+            }
         }
-        apps.ShowItemToolTips = true; apps.EndUpdate(); RefreshProfiles(); status.Text = $"{store.Apps.Count} applications  |  {store.Root}";
+        finally { apps.EndUpdate(); }
+        apps.ShowItemToolTips = true;
+        empty.Visible = apps.Items.Count == 0; if (empty.Visible) empty.BringToFront();
+        empty.Text = store.Apps.Count == 0 ? "Your next favorite app belongs here.\n\nOpen the circular menu to add JAR files, or drop them here." : "No apps match your search.\n\nTry a different name.";
+        RefreshProfiles(); UpdateInformation(); UpdateCommandState();
+        libraryCount.Text = $"{store.Apps.Count} applications  ·  Double-click to launch  ·  Drop JARs to add";
+        status.Text = $"●  Library ready     ·     {store.Root}";
+    }
+    internal void UpdateInformation(JarApp? hovered = null)
+    {
+        var app = hovered ?? hoveredApp ?? Selected;
+        if (app == null)
+        {
+            information.SetInfo("App Manager for Java", "A beautiful home for your Java applications", $"{store.Apps.Count} apps in your library  ·  {running.Count(p => p.IsRunning)} running  ·  Hover over a card to explore");
+            return;
+        }
+        string size = "JAR unavailable";
+        try { var file = new FileInfo(store.JarPath(app)); if (file.Exists) size = file.Length < 1048576 ? $"{file.Length / 1024d:N0} KB" : $"{file.Length / 1048576d:N1} MB"; } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        bool active = running.Any(p => p.AppId == app.Id && p.IsRunning);
+        information.SetInfo(app.Name, $"{(active ? "Running now" : "Ready to launch")}  ·  {size}  ·  Updated {app.UpdatedUtc.ToLocalTime():g}", store.JarPath(app));
+    }
+    private void PositionCommands()
+    {
+        int s = DeviceDpi; commands.Location = new Point(18*s/96, 112*s/96);
+        commands.Size = new Size(Math.Min(440*s/96, ClientSize.Width-36*s/96), Math.Max(240*s/96, Math.Min(570*s/96,ClientSize.Height-commands.Top-42*s/96)));
+    }
+    private void ToggleCommands()
+    {
+        if (busy) return;
+        if (commands.Visible) { commands.Hide(); apps.Focus(); return; }
+        PositionCommands(); UpdateCommandState(); commands.Show(); commands.BringToFront(); commands.SelectNextControl(null, true, true, true, false);
+    }
+    private void UpdateCommandState()
+    {
+        menuTitle.Text = Selected?.Name ?? "Make yourself at home";
+        foreach (var button in appCommands) button.Enabled = Selected != null;
+        profiles.Enabled = Selected != null;
+    }
+    private void BuildCommandDrawer()
+    {
+        var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(14), BackColor = Color.White };
+        var table = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, BackColor = Color.White };
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        int row = 0;
+        void Span(Control control, int height)
+        {
+            table.RowCount = row+1; table.RowStyles.Add(new RowStyle(SizeType.Absolute,height)); table.Controls.Add(control,0,row++); table.SetColumnSpan(control,2);
+        }
+        void Section(string name) => Span(new Label { Text=name, ForeColor=VisualTheme.Muted, Font=new Font("Segoe UI Semibold",8), Dock=DockStyle.Fill, Padding=new Padding(3,9,0,0) },32);
+        Button Command(string title, Action action, bool requiresApp)
+        {
+            var button=new Button { Text=title, AccessibleName=title, FlatStyle=FlatStyle.Flat, Dock=DockStyle.Fill, Margin=new Padding(3), BackColor=Color.FromArgb(247,245,253), ForeColor=VisualTheme.Ink, TextAlign=ContentAlignment.MiddleLeft, Padding=new Padding(9,0,0,0), Cursor=Cursors.Hand, Font=new Font("Segoe UI",9) };
+            button.FlatAppearance.BorderSize=0; button.FlatAppearance.MouseOverBackColor=Color.FromArgb(235,226,252); button.FlatAppearance.MouseDownBackColor=Color.FromArgb(224,211,248);
+            button.Click+=(_,_)=>{ commands.Hide(); Guard(action); }; if(requiresApp)appCommands.Add(button); return button;
+        }
+        void Pair(string one,Action first,bool firstApp,string two,Action second,bool secondApp)
+        {
+            table.RowCount=row+1;table.RowStyles.Add(new RowStyle(SizeType.Absolute,45));table.Controls.Add(Command(one,first,firstApp),0,row);table.Controls.Add(Command(two,second,secondApp),1,row++);
+        }
+        Span(new Label { Text="THE LAUNCH MENU", ForeColor=VisualTheme.Accent, Font=new Font("Segoe UI Semibold",8), Dock=DockStyle.Fill },23); Span(menuTitle,38);
+        Section("APPLICATIONS");
+        Pair("＋  Add JAR files…",Add,false,"↻  Update JAR…",UpdateJar,true);
+        Pair("✎  Rename app…",Rename,true,"×  Delete app",Delete,true);
+        Pair("▶  Run application",RunDefault,true,"↗  Run with parameters…",RunOnce,true);
+        Pair("▤  Open app folder",OpenFolder,true,"≡  View output",ViewOutput,true);
+        Section("LAUNCH PROFILES");
+        profiles.Dock=DockStyle.Fill;profiles.FlatStyle=FlatStyle.Flat;profiles.BackColor=Color.FromArgb(247,245,253);profiles.ForeColor=VisualTheme.Ink;Span(profiles,35);
+        Pair("＋  New profile…",NewProfile,true,"✎  Edit profile…",EditProfile,true);
+        Span(Command("×  Delete selected profile",DeleteProfile,true),40);
+        Section("YOUR ENVIRONMENT");Pair("◉  JRE location…",SetJava,false,"▣  Move storage…",MoveStorage,false);
+        Span(Command("Exit manager",Close,false),40);
+        table.Margin=Padding.Empty; scroll.Controls.Add(table);commands.Controls.Add(scroll);
     }
     private static Bitmap MakeIcon(string name)
     {
@@ -144,7 +244,7 @@ internal sealed class MainForm : Form
     private void Launch(JarApp app, LaunchProfile profile)
     {
         var session = LaunchSession.ForApp(store, app, profile);
-        running.Add(session); latest[app.Id] = session;
+        running.Add(session); latest[app.Id] = session; apps.Invalidate(); UpdateInformation();
         status.Text = $"Starting {app.Name}…";
         if (profile.ShowOutputWindow) ShowOutput(session);
         _ = ObserveLaunch(session);
@@ -156,6 +256,7 @@ internal sealed class MainForm : Form
         if (IsDisposed || Disposing) return;
         status.Text = result.Failed ? $"{session.AppName}: launch failed or exited unsuccessfully. See output."
             : $"{session.AppName} exited with code {result.ExitCode}.";
+        apps.Invalidate(); UpdateInformation();
         if (result.Failed) ShowOutput(session);
     }
     private void RestoreManager() { Show(); WindowState = FormWindowState.Normal; Activate(); tray.Visible = false; }
